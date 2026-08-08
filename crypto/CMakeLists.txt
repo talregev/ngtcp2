@@ -61,6 +61,12 @@ elseif(ENABLE_WOLFSSL)
   message(WARNING "libngtcp2_crypto_wolfssl library is disabled due to lack of good wolfSSL")
 endif()
 
+if(HAVE_MBEDTLS)
+  add_subdirectory(mbedtls)
+elseif(ENABLE_MBEDTLS)
+  message(WARNING "libngtcp2_crypto_mbedtls library is disabled due to lack of good Mbed TLS")
+endif()
+
 if(HAVE_OSSL)
   add_subdirectory(ossl)
 elseif(ENABLE_OPENSSL)

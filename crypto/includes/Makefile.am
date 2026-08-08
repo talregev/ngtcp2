@@ -48,6 +48,10 @@ if HAVE_WOLFSSL
 nobase_include_HEADERS += ngtcp2/ngtcp2_crypto_wolfssl.h
 endif
 
+if HAVE_MBEDTLS
+nobase_include_HEADERS += ngtcp2/ngtcp2_crypto_mbedtls.h
+endif
+
 if HAVE_OSSL
 nobase_include_HEADERS += ngtcp2/ngtcp2_crypto_ossl.h
 endif

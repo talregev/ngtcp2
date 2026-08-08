@@ -61,6 +61,10 @@ AC_SUBST(CRYPTO_WOLFSSL_LT_CURRENT, 9)
 AC_SUBST(CRYPTO_WOLFSSL_LT_REVISION, 1)
 AC_SUBST(CRYPTO_WOLFSSL_LT_AGE, 4)
 
+AC_SUBST(CRYPTO_MBEDTLS_LT_CURRENT, 0)
+AC_SUBST(CRYPTO_MBEDTLS_LT_REVISION, 0)
+AC_SUBST(CRYPTO_MBEDTLS_LT_AGE, 0)
+
 AC_SUBST(CRYPTO_OSSL_LT_CURRENT, 3)
 AC_SUBST(CRYPTO_OSSL_LT_REVISION, 1)
 AC_SUBST(CRYPTO_OSSL_LT_AGE, 3)
@@ -155,6 +159,11 @@ AC_ARG_WITH([wolfssl],
                     [Use wolfSSL [default=no]])],
     [request_wolfssl=$withval], [request_wolfssl=no])
 
+AC_ARG_WITH([mbedtls],
+    [AS_HELP_STRING([--with-mbedtls],
+                    [Use Mbed TLS [default=no]])],
+    [request_mbedtls=$withval], [request_mbedtls=no])
+
 AC_ARG_WITH([libbrotlienc],
     [AS_HELP_STRING([--with-libbrotlienc],
                     [Use libbrotlienc [default=no]])],
@@ -175,6 +184,9 @@ AC_ARG_VAR([PICOTLS_LIBS], [linker flags for PICOTLS])
 
 AC_ARG_VAR([WOLFSSL_CFLAGS], [C compiler flags for WOLFSSL])
 AC_ARG_VAR([WOLFSSL_LIBS], [linker flags for WOLFSSL])
+
+AC_ARG_VAR([MBEDTLS_CFLAGS], [C compiler flags for MBEDTLS])
+AC_ARG_VAR([MBEDTLS_LIBS], [linker flags for MBEDTLS])
 
 AC_ARG_VAR([LIBEV_CFLAGS], [C compiler flags for libev, skipping any checks])
 AC_ARG_VAR([LIBEV_LIBS], [linker flags for libev, skipping any checks])
@@ -446,6 +458,54 @@ fi
 
 AM_CONDITIONAL([HAVE_WOLFSSL], [ test "x${have_wolfssl}" = "xyes" ])
 
+# Mbed TLS (required for libngtcp2_crypto_mbedtls)
+have_mbedtls=no
+if test "x${request_mbedtls}" != "xno"; then
+  if test "x${MBEDTLS_CFLAGS}" = "x" &&
+     test "x${MBEDTLS_LIBS}" = "x"; then
+    PKG_CHECK_MODULES([MBEDTLS], [mbedtls],
+                      [have_mbedtls=yes], [have_mbedtls=no])
+    if test "x${have_mbedtls}" = "xno"; then
+      AC_MSG_NOTICE($MBEDTLS_PKG_ERRORS)
+    fi
+  else
+    have_mbedtls=yes
+  fi
+
+  if test "x${have_mbedtls}" = "xyes"; then
+    save_CFLAGS="$CFLAGS"
+    save_LIBS="$LIBS"
+    CFLAGS="$MBEDTLS_CFLAGS $CFLAGS"
+    LIBS="$MBEDTLS_LIBS $LIBS"
+
+    AC_MSG_CHECKING([for mbedtls_ssl_set_quic_method])
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+      #include <mbedtls/ssl.h>
+    ]], [[
+      mbedtls_ssl_set_quic_method(NULL, NULL, NULL);
+    ]])],
+    [AC_MSG_RESULT([yes]); have_mbedtls_quic=yes],
+    [AC_MSG_RESULT([no]); have_mbedtls_quic=no])
+
+    CFLAGS="$save_CFLAGS"
+    LIBS="$save_LIBS"
+
+    if test "x${have_mbedtls_quic}" = "xno"; then
+      AC_MSG_NOTICE([Mbed TLS does not have QUIC interface, disabling it])
+      have_mbedtls=no
+      MBEDTLS_LIBS=
+      MBEDTLS_CFLAGS=
+    fi
+  fi
+fi
+
+if test "x${request_mbedtls}" = "xyes" &&
+   test "x${have_mbedtls}" != "xyes"; then
+  AC_MSG_ERROR([mbedtls was requested (--with-mbedtls) but not found])
+fi
+
+AM_CONDITIONAL([HAVE_MBEDTLS], [ test "x${have_mbedtls}" = "xyes" ])
+
 have_crypto=no
 if test "x${have_quictls}" = "xyes" ||
    test "x${have_libressl}" = "xyes" ||
@@ -453,6 +513,7 @@ if test "x${have_quictls}" = "xyes" ||
    test "x${have_boringssl}" = "xyes" ||
    test "x${have_picotls}" = "xyes" ||
    test "x${have_wolfssl}" = "xyes" ||
+   test "x${have_mbedtls}" = "xyes" ||
    test "x${have_ossl}" = "xyes"; then
   have_crypto=yes
 fi
@@ -819,6 +880,8 @@ AC_CONFIG_FILES([
   crypto/picotls/libngtcp2_crypto_picotls.pc
   crypto/wolfssl/Makefile
   crypto/wolfssl/libngtcp2_crypto_wolfssl.pc
+  crypto/mbedtls/Makefile
+  crypto/mbedtls/libngtcp2_crypto_mbedtls.pc
   crypto/ossl/Makefile
   crypto/ossl/libngtcp2_crypto_ossl.pc
   doc/Makefile
@@ -862,6 +925,7 @@ AC_MSG_NOTICE([summary of build options:
       libngtcp2_crypto_boringssl: ${have_boringssl}
       libngtcp2_crypto_picotls:   ${have_picotls}
       libngtcp2_crypto_wolfssl:   ${have_wolfssl}
+      libngtcp2_crypto_mbedtls:   ${have_mbedtls}
       libngtcp2_crypto_ossl:      ${have_ossl}
     Cryptotest:       ${cryptotest}
     Debug:
@@ -875,6 +939,7 @@ AC_MSG_NOTICE([summary of build options:
       BoringSSL:      ${have_boringssl} (CFLAGS='${BORINGSSL_CFLAGS}' LIBS='${BORINGSSL_LIBS}')
       Picotls:        ${have_picotls} (CFLAGS='${PICOTLS_CFLAGS}' LIBS='${PICOTLS_LIBS}')
       wolfSSL:        ${have_wolfssl} (CFLAGS='${WOLFSSL_CFLAGS}' LIBS='${WOLFSSL_LIBS}')
+      Mbed TLS:       ${have_mbedtls} (CFLAGS='${MBEDTLS_CFLAGS}' LIBS='${MBEDTLS_LIBS}')
       Libbrotlienc:   ${have_libbrotlienc} (CFLAGS='${LIBBROTLIENC_CFLAGS}' LIBS='${LIBBROTLIENC_LIBS}')
       Libbrotlidec:   ${have_libbrotlidec} (CFLAGS='${LIBBROTLIDEC_CFLAGS}' LIBS='${LIBBROTLIDEC_LIBS}')
     Examples:         ${enable_examples}
